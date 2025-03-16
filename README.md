@@ -1,1 +1,3 @@
-Quick and Dirty Plot tool
+# Quick and Dirty Plot tool
+
+Plot in terminal tool
