@@ -1,15 +1,18 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
-enum CanvasError {
+const MARGIN: f64= 0.1;
+
+pub enum CanvasError {
     /// try to write out of range
     OutOfRange(String),
+    /// No data to plot
     NoData,
 }
 
 /// Where to plot
 #[derive(Default, Debug)]
-struct Canvas {
+pub struct Canvas {
     /// Vec<line: Vec<u8>>
     cells: Vec<Vec<u8>>,
     width: usize,
@@ -19,7 +22,7 @@ struct Canvas {
 }
 
 impl Canvas {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self::from_size(25, 80)
     }
 
@@ -36,15 +39,13 @@ impl Canvas {
     fn set_x_range(&mut self, x_min: f64, x_max: f64) {
         assert!(x_min < x_max);
         let delta = x_max - x_min;
-        let margin = 0.005;
-        self.x_range = (x_min - margin * delta, x_max + margin * delta)
+        self.x_range = (x_min - MARGIN * delta, x_max + MARGIN * delta)
     }
 
     fn set_y_range(&mut self, y_min: f64, y_max: f64) {
         assert!(y_min < y_max);
         let delta = y_max - y_min;
-        let margin = 0.005;
-        self.y_range = (y_min - margin * delta, y_max + margin * delta)
+        self.y_range = (y_min - MARGIN * delta, y_max + MARGIN * delta)
     }
 
     /// Put a specific value in a specific cell
@@ -110,13 +111,18 @@ impl Display for Canvas {
 }
 
 #[derive(Debug, Default)]
-struct DataSet {
+pub struct DataSet {
     /// label: list of points
     dataset: HashMap<String, Vec<(f64, f64)>>,
 }
 
 impl DataSet {
-    fn draw_into(&self, canvas: &mut Canvas) -> Result<(), CanvasError> {
+
+    pub fn add_points(&mut self, dataset: String, points:Vec<(f64, f64)>) {
+        self.dataset.entry(dataset).or_default().extend(points.iter())
+    }
+
+    pub fn draw_into(&self, canvas: &mut Canvas) -> Result<(), CanvasError> {
         // TODO check if range already set
         self.reset_canvas_range(canvas)?;
 
@@ -128,7 +134,7 @@ impl DataSet {
                 canvas.draw_value(point.0, point.1, l)?;
             }
         }
-        todo!()
+        Ok(())
     }
 
     fn reset_canvas_range(&self, canvas: &mut Canvas) -> Result<(), CanvasError> {
@@ -144,15 +150,3 @@ impl DataSet {
     }
 }
 
-fn main() {
-    // TODO: command line
-    // TODO: read data from csv?
-    let mut dataset = DataSet::default();
-    dataset.dataset.insert("1".into(), vec![(0.0, 0.0), (0.0, 1.0), (-4.0, 4.0), (-3.3, -2.5)]);
-    dataset.dataset.insert("2".into(), vec![(0.0, 0.0), (1.0, 1.0), (2.0, 2.0), (3.0, 3.0)]);
-    dataset.dataset.insert("3".into(), vec![(0.0, 0.0), (-1.0, -1.0), (-2.0, -2.0), (-3.0, -3.0)]);
-    dataset.dataset.insert("4".into(), vec![(0.0, 0.0)]);
-    let mut canvas = Canvas::new();
-    let _  = dataset.draw_into(&mut canvas);
-    println!("{canvas}");
-}
