@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
-const MARGIN: f64= 0.1;
+const MARGIN: f64 = 0.0;
 
+#[derive(Debug)]
 pub enum CanvasError {
     /// try to write out of range
     OutOfRange(String),
@@ -28,7 +29,7 @@ impl Canvas {
 
     fn from_size(height: usize, width: usize) -> Self {
         Self {
-            cells: (0..height).map(|_| vec![b'.'; width]).collect(),
+            cells: (0..height).map(|_| vec![b' '; width]).collect(),
             width,
             height,
             x_range: (0.0, 0.0),
@@ -39,13 +40,23 @@ impl Canvas {
     fn set_x_range(&mut self, x_min: f64, x_max: f64) {
         assert!(x_min < x_max);
         let delta = x_max - x_min;
-        self.x_range = (x_min - MARGIN * delta, x_max + MARGIN * delta)
+        let x_range = (x_min - MARGIN * delta, x_max + MARGIN * delta);
+        let cell_width = (x_range.1 - x_range.0) / self.width as f64;
+        self.x_range = (
+            x_min - (MARGIN * delta) - cell_width,
+            x_max + (MARGIN * delta) + cell_width,
+        );
     }
 
     fn set_y_range(&mut self, y_min: f64, y_max: f64) {
         assert!(y_min < y_max);
         let delta = y_max - y_min;
-        self.y_range = (y_min - MARGIN * delta, y_max + MARGIN * delta)
+        let y_range = (y_min - MARGIN * delta, y_max + MARGIN * delta);
+        let cell_width = (y_range.1 - y_range.0) / self.height as f64;
+        self.y_range = (
+            y_min - MARGIN * delta - 2.0 * cell_width,
+            y_max + MARGIN * delta,
+        );
     }
 
     /// Put a specific value in a specific cell
@@ -60,7 +71,7 @@ impl Canvas {
             Ok(())
         } else {
             Err(CanvasError::OutOfRange(format!(
-                "try to write in ({}, {}) (Canva size: ({}, {}))",
+                "try to write in ({}, {}) (Canvas size: ({}, {}))",
                 line, column, &self.height, &self.width
             )))
         }
@@ -84,6 +95,46 @@ impl Canvas {
         let line = self.height - offset;
         let column = get_cell(x, self.x_range.0, self.x_range.1, self.width).ok()?;
         self.get_mut_cell(line, column)
+    }
+
+    /// Draw axes
+    fn draw_axes(&mut self) -> Result<(), CanvasError> {
+        let y_axis_location = match get_cell(0.0, self.x_range.0, self.x_range.1, self.width) {
+            Ok(u) => u,
+            _ => {
+                if self.x_range.1 < 0.0 {
+                    self.width - 1
+                } else {
+                    0
+                }
+            }
+        };
+        let x_axis_location = match get_cell(0.0, self.y_range.0, self.y_range.1, self.height) {
+            Ok(u) => u,
+            _ => {
+                if self.y_range.1 < 0.0 {
+                    0
+                } else {
+                    self.height - 1
+                }
+            }
+        };
+        for cell in 0..self.width {
+            let c = match (cell as i32 - y_axis_location as i32) % 5 {
+                0 => b'+',
+                _ => b'-',
+            };
+            self.set_cell(x_axis_location, cell, c)?;
+        }
+        for cell in 0..self.height {
+            let c = match (cell as i32 - x_axis_location as i32) % 5 {
+                0 => b'+',
+                _ => b'|',
+            };
+            self.set_cell(cell, y_axis_location, c)?;
+        }
+        self.set_cell(x_axis_location, y_axis_location, b'+')?;
+        Ok(())
     }
 }
 
@@ -117,14 +168,17 @@ pub struct DataSet {
 }
 
 impl DataSet {
-
-    pub fn add_points(&mut self, dataset: String, points:Vec<(f64, f64)>) {
-        self.dataset.entry(dataset).or_default().extend(points.iter())
+    pub fn add_points(&mut self, dataset: String, points: Vec<(f64, f64)>) {
+        self.dataset
+            .entry(dataset)
+            .or_default()
+            .extend(points.iter())
     }
 
     pub fn draw_into(&self, canvas: &mut Canvas) -> Result<(), CanvasError> {
         // TODO check if range already set
         self.reset_canvas_range(canvas)?;
+        canvas.draw_axes()?;
 
         // TODO add labels
         for (label, points) in self.dataset.iter() {
@@ -149,4 +203,3 @@ impl DataSet {
         Ok(())
     }
 }
-
