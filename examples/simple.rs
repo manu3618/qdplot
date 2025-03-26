@@ -1,4 +1,4 @@
-use qdplot::{Canvas, DataSet};
+use qdplot::{Canvas, DataSet, PlotKind};
 
 fn main() {
     let mut dataset = DataSet::default();
@@ -16,6 +16,6 @@ fn main() {
     );
     dataset.add_points("4".into(), vec![(0.0, 0.0)]);
     let mut canvas = Canvas::new();
-    let _ = dataset.draw_into(&mut canvas);
+    let _ = dataset.draw_into(&mut canvas, PlotKind::default());
     println!("{canvas}");
 }

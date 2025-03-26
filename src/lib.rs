@@ -161,6 +161,14 @@ impl Display for Canvas {
     }
 }
 
+#[derive(Debug, Default, Copy, Clone)]
+pub enum PlotKind {
+    #[default]
+    Point,
+    Boxplot,
+    CDF,
+}
+
 #[derive(Debug, Default)]
 pub struct DataSet {
     /// label: list of points
@@ -175,7 +183,15 @@ impl DataSet {
             .extend(points.iter())
     }
 
-    pub fn draw_into(&self, canvas: &mut Canvas) -> Result<(), CanvasError> {
+    pub fn draw_into(&self, canvas: &mut Canvas, kind: PlotKind) -> Result<(), CanvasError> {
+        match kind {
+            PlotKind::Point => self.draw_point(canvas),
+            PlotKind::Boxplot => todo!(),
+            PlotKind::CDF => todo!(),
+        }
+    }
+
+    fn draw_point(&self, canvas: &mut Canvas) -> Result<(), CanvasError> {
         // TODO check if range already set
         self.reset_canvas_range(canvas)?;
         canvas.draw_axes()?;
