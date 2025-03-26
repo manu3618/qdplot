@@ -167,6 +167,149 @@ pub enum PlotKind {
     Point,
     Boxplot,
     CDF,
+    Histogram,
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Quantiles {
+    min: f64,
+    q1: f64,
+    q2: f64,
+    q3: f64,
+    max: f64,
+    outliers: Vec<f64>,
+}
+
+impl Quantiles {
+    pub fn from_slice(&mut self, input: &[f64]) -> Self {
+        let inter_quartiles = 1.5;
+        let mut x: Vec<f64> = input.iter().filter(|a| !a.is_nan()).copied().collect();
+        assert!(
+            !x.is_empty(),
+            "not enough valid values in input ({input:?})"
+        );
+        x.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let [q1, q2, q3] =
+            [0.25, 0.5, 0.75].map(|q| get_value(x.as_slice(), get_index(q, x.len())).unwrap());
+        let lower = q2 - inter_quartiles * (q3 - q1);
+        let upper = q2 + inter_quartiles * (q3 - q1);
+        Self {
+            min: x
+                .iter()
+                .filter(|&a| *a > lower)
+                .copied()
+                .min_by(|a, b| a.partial_cmp(b).unwrap())
+                .unwrap(),
+            q1,
+            q2,
+            q3,
+            max: x
+                .iter()
+                .filter(|&a| *a < upper)
+                .copied()
+                .max_by(|a, b| a.partial_cmp(b).unwrap())
+                .unwrap(),
+            outliers: x
+                .iter()
+                .filter(|&a| *a < lower || *a > upper)
+                .copied()
+                .collect(),
+        }
+    }
+
+    /// Draw a horizontal boxplot on the canvas from lines height to height+3
+    pub fn draw_into(&self, canvas: &mut Canvas, height: usize) -> Result<(), CanvasError> {
+        // TODO test
+        assert!(canvas.height >= height + 3);
+        let [min, q1, q2, q3, max] = [self.min, self.q1, self.q2, self.q3, self.max]
+            .map(|x| get_cell(x, canvas.x_range.0, canvas.x_range.1, canvas.width));
+        let outliers = self
+            .outliers
+            .iter()
+            .map(|&x| get_cell(x, canvas.x_range.0, canvas.x_range.1, canvas.width))
+            .collect::<Vec<_>>();
+
+        for x in outliers {
+            canvas.set_cell(height + 1, x?, b'+')?;
+        }
+        let (q1, q3) = (q1?, q3?);
+        for x in q1..q3 {
+            canvas.set_cell(height, x, b'-')?;
+            canvas.set_cell(height + 2, x, b'-')?;
+        }
+        for x in [min, Ok(q1), q2, Ok(q3), max] {
+            canvas.set_cell(height + 1, x?, b'|')?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct CDF {
+    steps: Vec<(f64, f64)>,
+}
+
+impl CDF {
+    pub fn from_vec(&mut self, input: Vec<f64>) -> Self {
+        todo!()
+    }
+
+    pub fn draw_into(&self, canvas: &mut Canvas) -> Result<(), CanvasError> {
+        todo!()
+    }
+
+    /// Get the value of the CDF evaluted on x
+    fn get_value(&self, x: f64) -> f64 {
+        todo!()
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Histogram {
+    /// Bins boundaries
+    bins: Vec<f64>,
+    /// number of sample per bins
+    values: Vec<usize>,
+}
+
+impl Histogram {
+    pub fn from_vec(&mut self, input: Vec<f64>) -> Self {
+        if input.is_empty() {
+            return Self::default();
+        }
+        let first = input[0];
+        let (x_min, x_max) = input
+            .iter()
+            .copied()
+            .fold((first, first), |(mi, ma), x| (x.min(mi), x.max(ma)));
+        let x_max = x_max + 0.001 * (x_max - x_min);
+        let mut hist = Histogram::default();
+        hist.adjust_bins(x_min, x_max, 10);
+        for x in input {
+            todo!();
+        }
+        todo!()
+    }
+
+    pub fn draw_into(&self, canvas: &mut Canvas) -> Result<(), CanvasError> {
+        todo!()
+    }
+
+    /// Get the value of the histogram at specific value
+    fn get_value(&self, x: f64) -> f64 {
+        todo!()
+    }
+
+    /// Get the normalized value of the histogram at specific value
+    fn get_frequency(&self, x: f64) -> f64 {
+        todo!()
+    }
+
+    /// Compute bins boundaries.
+    fn adjust_bins(&mut self, x_min: f64, x_max: f64, bin_nb: usize) {
+        let bin_size = x_max - x_min;
+        self.bins = (0..=bin_nb).map(|x| x_min + x as f64 * bin_size).collect();
+    }
 }
 
 #[derive(Debug, Default)]
@@ -188,6 +331,7 @@ impl DataSet {
             PlotKind::Point => self.draw_point(canvas),
             PlotKind::Boxplot => todo!(),
             PlotKind::CDF => todo!(),
+            PlotKind::Histogram => todo!(),
         }
     }
 
@@ -217,5 +361,67 @@ impl DataSet {
         canvas.set_x_range(x_min, x_max);
         canvas.set_y_range(y_min, y_max);
         Ok(())
+    }
+
+    /// Get quantiles for each dataset
+    fn get_quantiles(&self) -> HashMap<String, Option<Quantiles>> {
+        todo!()
+    }
+
+    /// Get cumulative distribution for each dataset
+    /// Return points where the distribution changes
+    fn get_cumulatives(&self) -> HashMap<String, Option<Vec<(f64, f64)>>> {
+        todo!()
+    }
+}
+
+fn get_index(quantile: f64, length: usize) -> f64 {
+    quantile * length as f64
+}
+
+/// Get value at specific non-integer index
+///
+/// Return a weighted sum of previous and next values
+/// The nearest from an index, the most weight this index has
+fn get_value(x: &[f64], idx: f64) -> Option<f64> {
+    dbg!(x, idx);
+    if idx + 1.0 > x.len() as f64 {
+        return None;
+    }
+    assert!(x.len() as f64 >= idx);
+    if idx == x.len() as f64 - 1.0 {
+        return Some(*x.last().unwrap());
+    }
+    let f = idx.fract();
+    let i = dbg!(idx.floor() as usize);
+    return Some(dbg!(1.0 - f) * dbg!(x[i]) + dbg!(f) * dbg!(x[i + 1]));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn value_getter() {
+        let v = [-1.0, 1.0];
+        assert_eq!(get_value(&v, 0.0).unwrap(), -1.0);
+        assert_eq!(get_value(&v, 1.0).unwrap(), 1.0);
+        assert_eq!(get_value(&v, 0.5).unwrap(), 0.0);
+        assert_eq!(get_value(&v, 0.25).unwrap(), -0.5);
+
+        let v = [-1.0, 1.0, 2.0];
+        assert!(get_value(&v, 2.1).is_none());
+        assert_eq!(get_value(&v, 0.0).unwrap(), -1.0);
+        assert_eq!(get_value(&v, 1.0).unwrap(), 1.0);
+        assert_eq!(get_value(&v, 0.25).unwrap(), -0.5);
+        assert_eq!(get_value(&v, 0.5).unwrap(), 0.0);
+
+        let v = [];
+        assert!(get_value(&v, 0.25).is_none());
+    }
+
+    #[test]
+    fn quantiles() {
+        let v = [1, 3, 4, 0, 2];
+        assert_eq!(quantile(&v), None);
     }
 }
