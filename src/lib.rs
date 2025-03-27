@@ -1,5 +1,9 @@
 use std::collections::HashMap;
+use std::error::Error;
+use std::fmt;
 use std::fmt::{Display, Formatter};
+use std::iter::zip;
+use std::num::ParseFloatError;
 
 const MARGIN: f64 = 0.0;
 
@@ -9,6 +13,42 @@ pub enum CanvasError {
     OutOfRange(String),
     /// No data to plot
     NoData,
+}
+
+impl Display for CanvasError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            Self::OutOfRange(s) => write!(f, "Canvas Error: Out of range {}", s),
+            Self::NoData => write!(f, "Canvas Error: No Data"),
+        }
+    }
+}
+
+impl Error for CanvasError {}
+
+#[derive(Debug)]
+pub enum DatasetError {
+    /// NoData
+    NoData,
+    /// Invalid data
+    InvalidData(String),
+}
+
+impl Display for DatasetError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            Self::NoData => write!(f, "Data Error: No data"),
+            Self::InvalidData(s) => write!(f, "Data Error: Invalid Data: {}", s),
+        }
+    }
+}
+
+impl Error for DatasetError {}
+
+impl From<ParseFloatError> for DatasetError {
+    fn from(err: ParseFloatError) -> DatasetError {
+        Self::InvalidData(err.to_string())
+    }
 }
 
 /// Where to plot
@@ -181,7 +221,7 @@ pub struct Quantiles {
 }
 
 impl Quantiles {
-    pub fn from_slice(&mut self, input: &[f64]) -> Self {
+    pub fn from_slice(input: &[f64]) -> Self {
         let inter_quartiles = 1.5;
         let mut x: Vec<f64> = input.iter().filter(|a| !a.is_nan()).copied().collect();
         assert!(
@@ -319,6 +359,44 @@ pub struct DataSet {
 }
 
 impl DataSet {
+    /// Build the dataset from the content of a csv file
+    ///
+    /// the content looks like
+    /// ```plaintext
+    ///      , A , B , "C"
+    ///  -1  , 0 , 1 , 3
+    ///  -5  , 1 , -2, 4
+    /// ```
+    pub fn from_csv(content: &str) -> Result<Self, DatasetError> {
+        let sep = ',';
+        let mut dataset = Self::default();
+        let mut lines = content.lines();
+        let headers: Vec<_> = lines
+            .next()
+            .ok_or(DatasetError::NoData)?
+            .split(sep)
+            .map(|l| String::from(l.replace('"', "").trim()))
+            .skip(1)
+            .collect();
+        while let Some(line) = lines.next() {
+            let mut values = line
+                .split(sep)
+                .map(|l| String::from(l.replace('"', "").trim()));
+            let x = values
+                .next()
+                .expect("first column (indexes) should exist")
+                .parse()?;
+            for (label, y) in zip(headers.clone(), values) {
+                dataset
+                    .dataset
+                    .entry(label.into())
+                    .or_default()
+                    .push((x, y.parse()?));
+            }
+        }
+        Ok(dataset)
+    }
+
     pub fn add_points(&mut self, dataset: String, points: Vec<(f64, f64)>) {
         self.dataset
             .entry(dataset)
@@ -421,7 +499,30 @@ mod tests {
 
     #[test]
     fn quantiles() {
-        let v = [1, 3, 4, 0, 2];
-        assert_eq!(quantile(&v), None);
+        let v = [1.0, 3.0, 4.0, 0.0, 2.0];
+        let q = Quantiles::from_slice(&v);
+        assert_eq!(
+            q,
+            Quantiles {
+                min: 0.0,
+                q1: 1.25,
+                q2: 2.5,
+                q3: 3.75,
+                max: 4.0,
+                outliers: Vec::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn dataset_csv() {
+        let text = r#"
+         , A , B , "C"
+        -1  , 0 , 1 , 3
+        -5  , 1 , -2, 4
+    "#
+        .trim();
+        let dataset = DataSet::from_csv(text).unwrap();
+        dbg!(dataset);
     }
 }
