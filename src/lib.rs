@@ -77,6 +77,11 @@ impl Canvas {
         }
     }
 
+    /// Remove drawing
+    pub fn clear(&mut self) {
+        self.cells = (0..self.height).map(|_| vec![b' '; self.width]).collect()
+    }
+
     fn set_x_range(&mut self, x_min: f64, x_max: f64) {
         assert!(x_min < x_max);
         let delta = x_max - x_min;
@@ -259,7 +264,6 @@ impl Quantiles {
 
     /// Draw a horizontal boxplot on the canvas from lines height to height+3
     pub fn draw_into(&self, canvas: &mut Canvas, height: usize) -> Result<(), CanvasError> {
-        // TODO test
         assert!(canvas.height >= height + 3);
         let [min, q1, q2, q3, max] = [self.min, self.q1, self.q2, self.q3, self.max]
             .map(|x| get_cell(x, canvas.x_range.0, canvas.x_range.1, canvas.width));
@@ -269,16 +273,23 @@ impl Quantiles {
             .map(|&x| get_cell(x, canvas.x_range.0, canvas.x_range.1, canvas.width))
             .collect::<Vec<_>>();
 
+        let (q1,q2,  q3) = (q1?,q2?, q3?);
+        let (min, max) = (min?, max?);
+        for x in (min+1)..q1 {
+            canvas.set_cell(height + 1 , x, b'-')?;
+        }
+        for x in (q3+1)..max {
+            canvas.set_cell(height + 1 , x, b'-')?;
+        }
         for x in outliers {
             canvas.set_cell(height + 1, x?, b'+')?;
         }
-        let (q1, q3) = (q1?, q3?);
         for x in q1..q3 {
             canvas.set_cell(height, x, b'-')?;
             canvas.set_cell(height + 2, x, b'-')?;
         }
-        for x in [min, Ok(q1), q2, Ok(q3), max] {
-            canvas.set_cell(height + 1, x?, b'|')?;
+        for x in [min, q1, q2, q3, max] {
+            canvas.set_cell(height + 1, x, b'|')?;
         }
         Ok(())
     }
@@ -291,16 +302,38 @@ pub struct CDF {
 
 impl CDF {
     pub fn from_vec(&mut self, input: Vec<f64>) -> Self {
-        todo!()
+        let step = 1.0 / (input.len() as f64);
+        let mut steps: Vec<(f64, f64)> = Vec::new();
+        let mut input: Vec<f64> = input
+            .iter()
+            .filter_map(|y| if y.is_nan() { None } else { Some(y) })
+            .copied()
+            .collect();
+        input.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        for y in input {
+            if let Some(point) = steps.iter_mut().find(|elt| elt.0 == y) {
+                point.1 += step
+            } else {
+                steps.push((y, step));
+            }
+        }
+        Self { steps }
     }
 
     pub fn draw_into(&self, canvas: &mut Canvas) -> Result<(), CanvasError> {
+        // XXX
         todo!()
     }
 
     /// Get the value of the CDF evaluted on x
     fn get_value(&self, x: f64) -> f64 {
-        todo!()
+        let mut y = 0.0;
+        for p in &self.steps {
+            if p.0 < x {
+                y = p.1;
+            }
+        }
+        y
     }
 }
 
@@ -407,7 +440,7 @@ impl DataSet {
     pub fn draw_into(&self, canvas: &mut Canvas, kind: PlotKind) -> Result<(), CanvasError> {
         match kind {
             PlotKind::Point => self.draw_point(canvas),
-            PlotKind::Boxplot => todo!(),
+            PlotKind::Boxplot => self.draw_boxplot(canvas),
             PlotKind::CDF => todo!(),
             PlotKind::Histogram => todo!(),
         }
@@ -428,6 +461,17 @@ impl DataSet {
                 }
                 canvas.draw_value(point.0, point.1, l)?;
             }
+        }
+        Ok(())
+    }
+
+    fn draw_boxplot(&self, canvas: &mut Canvas) -> Result<(), CanvasError> {
+        // TODO set canvas size
+        let mut height = 0;
+        for dataset in self.dataset.values() {
+            let q = Quantiles::from_slice(&dataset.iter().map(|x| x.1).collect::<Vec<_>>());
+            q.draw_into(canvas, height)?;
+            height += 4
         }
         Ok(())
     }
@@ -465,7 +509,6 @@ fn get_index(quantile: f64, length: usize) -> f64 {
 /// Return a weighted sum of previous and next values
 /// The nearest from an index, the most weight this index has
 fn get_value(x: &[f64], idx: f64) -> Option<f64> {
-    dbg!(x, idx);
     if idx + 1.0 > x.len() as f64 {
         return None;
     }
@@ -474,8 +517,8 @@ fn get_value(x: &[f64], idx: f64) -> Option<f64> {
         return Some(*x.last().unwrap());
     }
     let f = idx.fract();
-    let i = dbg!(idx.floor() as usize);
-    return Some(dbg!(1.0 - f) * dbg!(x[i]) + dbg!(f) * dbg!(x[i + 1]));
+    let i = idx.floor() as usize;
+    return Some((1.0 - f) * x[i] + f *(x[i + 1]));
 }
 
 #[cfg(test)]
