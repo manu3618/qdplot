@@ -423,6 +423,9 @@ impl DataSet {
             // TODO: use correct labels
             let l = label.bytes().next().unwrap();
             for point in points {
+                if point.0.is_nan() || point.1.is_nan() {
+                    continue;
+                }
                 canvas.draw_value(point.0, point.1, l)?;
             }
         }
