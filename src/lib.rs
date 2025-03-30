@@ -273,13 +273,13 @@ impl Quantiles {
             .map(|&x| get_cell(x, canvas.x_range.0, canvas.x_range.1, canvas.width))
             .collect::<Vec<_>>();
 
-        let (q1,q2,  q3) = (q1?,q2?, q3?);
+        let (q1, q2, q3) = (q1?, q2?, q3?);
         let (min, max) = (min?, max?);
-        for x in (min+1)..q1 {
-            canvas.set_cell(height + 1 , x, b'-')?;
+        for x in (min + 1)..q1 {
+            canvas.set_cell(height + 1, x, b'-')?;
         }
-        for x in (q3+1)..max {
-            canvas.set_cell(height + 1 , x, b'-')?;
+        for x in (q3 + 1)..max {
+            canvas.set_cell(height + 1, x, b'-')?;
         }
         for x in outliers {
             canvas.set_cell(height + 1, x?, b'+')?;
@@ -301,7 +301,7 @@ pub struct CDF {
 }
 
 impl CDF {
-    pub fn from_vec(&mut self, input: Vec<f64>) -> Self {
+    pub fn from_vec(input: Vec<f64>) -> Self {
         let step = 1.0 / (input.len() as f64);
         let mut steps: Vec<(f64, f64)> = Vec::new();
         let mut input: Vec<f64> = input
@@ -310,19 +310,26 @@ impl CDF {
             .copied()
             .collect();
         input.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let mut cur = 0.0;
         for y in input {
+            cur += step;
             if let Some(point) = steps.iter_mut().find(|elt| elt.0 == y) {
-                point.1 += step
+                point.1 = cur;
             } else {
-                steps.push((y, step));
+                steps.push((y, cur));
             }
         }
         Self { steps }
     }
 
-    pub fn draw_into(&self, canvas: &mut Canvas) -> Result<(), CanvasError> {
-        // XXX
-        todo!()
+    pub fn draw_into(&self, canvas: &mut Canvas, symbole: u8) -> Result<(), CanvasError> {
+        let delta = (canvas.x_range.1 - canvas.x_range.0) / canvas.width as f64;
+        for c in 0..=canvas.width {
+            let x = canvas.x_range.0 + delta * c as f64;
+            let y = self.get_value(x);
+            canvas.draw_value(x, y, symbole)?;
+        }
+        Ok(())
     }
 
     /// Get the value of the CDF evaluted on x
@@ -441,7 +448,7 @@ impl DataSet {
         match kind {
             PlotKind::Point => self.draw_point(canvas),
             PlotKind::Boxplot => self.draw_boxplot(canvas),
-            PlotKind::CDF => todo!(),
+            PlotKind::CDF => self.draw_cdf(canvas),
             PlotKind::Histogram => todo!(),
         }
     }
@@ -472,6 +479,20 @@ impl DataSet {
             let q = Quantiles::from_slice(&dataset.iter().map(|x| x.1).collect::<Vec<_>>());
             q.draw_into(canvas, height)?;
             height += 4
+        }
+        Ok(())
+    }
+
+    fn draw_cdf(&self, canvas: &mut Canvas) -> Result<(), CanvasError> {
+        // TODO: set canvas size
+        canvas.y_range = (-0.1, 1.1);
+        canvas.draw_axes()?;
+        for (label, data) in &self.dataset {
+            let cdf = CDF::from_vec(data.iter().map(|x| x.1).collect());
+            cdf.draw_into(
+                canvas,
+                label.bytes().next().expect("label should not be empty"),
+            )?
         }
         Ok(())
     }
@@ -518,7 +539,7 @@ fn get_value(x: &[f64], idx: f64) -> Option<f64> {
     }
     let f = idx.fract();
     let i = idx.floor() as usize;
-    return Some((1.0 - f) * x[i] + f *(x[i + 1]));
+    return Some((1.0 - f) * x[i] + f * (x[i + 1]));
 }
 
 #[cfg(test)]
