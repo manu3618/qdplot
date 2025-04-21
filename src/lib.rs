@@ -353,7 +353,8 @@ pub struct Histogram {
 }
 
 impl Histogram {
-    pub fn from_vec(&mut self, input: Vec<f64>) -> Self {
+    pub fn from_vec(input: Vec<f64>) -> Self {
+        let bin_nb = 10;
         if input.is_empty() {
             return Self::default();
         }
@@ -364,11 +365,29 @@ impl Histogram {
             .fold((first, first), |(mi, ma), x| (x.min(mi), x.max(ma)));
         let x_max = x_max + 0.001 * (x_max - x_min);
         let mut hist = Histogram::default();
-        hist.adjust_bins(x_min, x_max, 10);
-        for x in input {
-            todo!();
+        hist.reset_bins(x_min, x_max, bin_nb);
+        hist.add_values(&input);
+        hist
+    }
+
+    /// get bin number into which the value should go.
+    fn get_bin(&self, x: f64) -> Option<usize> {
+        if let Some(first) = self.bins.first() {
+            if &x < first || &x > self.bins.last().expect("at least one item") {
+                None
+            } else {
+                let mut upper = (&self.bins).into_iter();
+                let _ = upper.next();
+                for (idx, b) in upper.enumerate() {
+                    if x < *b {
+                        return Some(idx);
+                    }
+                }
+                unreachable!()
+            }
+        } else {
+            None
         }
-        todo!()
     }
 
     pub fn draw_into(&self, canvas: &mut Canvas) -> Result<(), CanvasError> {
@@ -376,8 +395,16 @@ impl Histogram {
     }
 
     /// Get the value of the histogram at specific value
-    fn get_value(&self, x: f64) -> f64 {
-        todo!()
+    /// Return None if the Historgram is not initialized
+    fn get_value(&self, x: f64) -> Option<f64> {
+        if self.bins.is_empty() || self.values.is_empty() {
+            return None;
+        }
+        if let Some(b) = self.get_bin(x) {
+            self.values.get(b).map(|&x| x as f64)
+        } else {
+            Some(0.0)
+        }
     }
 
     /// Get the normalized value of the histogram at specific value
@@ -386,9 +413,20 @@ impl Histogram {
     }
 
     /// Compute bins boundaries.
-    fn adjust_bins(&mut self, x_min: f64, x_max: f64, bin_nb: usize) {
-        let bin_size = x_max - x_min;
+    fn reset_bins(&mut self, x_min: f64, x_max: f64, bin_nb: usize) {
+        if bin_nb == 0 {
+            panic!("bin_nb should not be 0");
+        }
+        let bin_size = (x_max - x_min) / (bin_nb as f64);
         self.bins = (0..=bin_nb).map(|x| x_min + x as f64 * bin_size).collect();
+        self.values = vec![0; bin_nb];
+    }
+
+    fn add_values(&mut self, input: &[f64]) {
+        for &x in input.iter() {
+            let idx = self.get_bin(x).unwrap();
+            *self.values.get_mut(idx).unwrap() += 1;
+        }
     }
 }
 
@@ -591,5 +629,21 @@ mod tests {
         .trim();
         let dataset = DataSet::from_csv(text).unwrap();
         dbg!(dataset);
+    }
+
+    #[test]
+    fn hist_empty() {
+        let hist = Histogram::default();
+        assert!(hist.get_value(0.0).is_none());
+    }
+
+    #[test]
+    fn hist_values() {
+        let values = [-1.0, 0.0, 0.0, 0.1, 0.2, 10.0];
+        let hist = Histogram::from_vec(values.into());
+        assert_eq!(hist.get_value(0.0), Some(4.0));
+        assert_eq!(hist.get_value(11.0), Some(0.0));
+        assert_eq!(hist.get_value(5.0), Some(0.0));
+        assert_eq!(hist.get_value(1.0), Some(1.0));
     }
 }
