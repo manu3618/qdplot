@@ -304,11 +304,7 @@ impl CDF {
     pub fn from_vec(input: Vec<f64>) -> Self {
         let step = 1.0 / (input.len() as f64);
         let mut steps: Vec<(f64, f64)> = Vec::new();
-        let mut input: Vec<f64> = input
-            .iter()
-            .filter_map(|y| if y.is_nan() { None } else { Some(y) })
-            .copied()
-            .collect();
+        let mut input: Vec<f64> = input.iter().filter(|y| !y.is_nan()).copied().collect();
         input.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let mut cur = 0.0;
         for y in input {
@@ -372,13 +368,14 @@ impl Histogram {
 
     /// get bin number into which the value should go.
     fn get_bin(&self, x: f64) -> Option<usize> {
+        if x.is_nan() {
+            return None;
+        }
         if let Some(first) = self.bins.first() {
             if &x < first || &x > self.bins.last().expect("at least one item") {
                 None
             } else {
-                let mut upper = (&self.bins).into_iter();
-                let _ = upper.next();
-                for (idx, b) in upper.enumerate() {
+                for (idx, b) in self.bins.iter().skip(1).enumerate() {
                     if x < *b {
                         return Some(idx);
                     }
@@ -390,8 +387,14 @@ impl Histogram {
         }
     }
 
-    pub fn draw_into(&self, canvas: &mut Canvas) -> Result<(), CanvasError> {
-        todo!()
+    pub fn draw_into(&self, canvas: &mut Canvas, label: u8) -> Result<(), CanvasError> {
+        let step = (canvas.x_range.1 - canvas.x_range.0) / (canvas.width as f64);
+        let start = canvas.x_range.0;
+        let xs = (0..canvas.width).map(|a| start + a as f64 * step);
+        for x in xs {
+            canvas.draw_value(x, self.get_value(x).unwrap(), label)?
+        }
+        Ok(())
     }
 
     /// Get the value of the histogram at specific value
@@ -408,8 +411,9 @@ impl Histogram {
     }
 
     /// Get the normalized value of the histogram at specific value
-    fn get_frequency(&self, x: f64) -> f64 {
-        todo!()
+    fn get_frequency(&self, x: f64) -> Option<f64> {
+        let nb = self.values.iter().sum::<usize>() as f64;
+        self.get_value(x).map(|x| x / nb)
     }
 
     /// Compute bins boundaries.
@@ -456,7 +460,7 @@ impl DataSet {
             .map(|l| String::from(l.replace('"', "").trim()))
             .skip(1)
             .collect();
-        while let Some(line) = lines.next() {
+        for line in lines {
             let mut values = line
                 .split(sep)
                 .map(|l| String::from(l.replace('"', "").trim()));
@@ -467,7 +471,7 @@ impl DataSet {
             for (label, y) in zip(headers.clone(), values) {
                 dataset
                     .dataset
-                    .entry(label.into())
+                    .entry(label)
                     .or_default()
                     .push((x, y.parse()?));
             }
@@ -487,7 +491,7 @@ impl DataSet {
             PlotKind::Point => self.draw_point(canvas),
             PlotKind::Boxplot => self.draw_boxplot(canvas),
             PlotKind::CDF => self.draw_cdf(canvas),
-            PlotKind::Histogram => todo!(),
+            PlotKind::Histogram => self.draw_histogram(canvas),
         }
     }
 
@@ -535,10 +539,59 @@ impl DataSet {
         Ok(())
     }
 
+    fn draw_histogram(&self, canvas: &mut Canvas) -> Result<(), CanvasError> {
+        let hists: HashMap<String, Histogram> = self
+            .dataset
+            .iter()
+            .map(|(label, dataset)| {
+                (
+                    label.clone(),
+                    Histogram::from_vec(
+                        dataset
+                            .iter()
+                            .map(|x| x.1)
+                            .filter(|x| !x.is_nan())
+                            .collect(),
+                    ),
+                )
+            })
+            .collect();
+
+        // set canvas ranges
+        let (x_min, x_max) = hists
+            .values()
+            .map(|h| {
+                (
+                    *h.bins.first().expect("dataset should not be empty"),
+                    *h.bins.last().unwrap(),
+                )
+            })
+            .reduce(|(a, b), (c, d)| (a.min(c), b.max(d)))
+            .unwrap();
+        let y_max = hists
+            .values()
+            .map(|h| h.values.clone().into_iter().fold(0, |acc, x| acc.max(x)))
+            .reduce(|acc, b| acc.max(b))
+            .unwrap() as f64;
+        let y_min = -y_max / 20.0;
+        canvas.x_range = (x_min, x_max);
+        canvas.y_range = (y_min, y_max);
+
+        for (l, h) in hists.iter() {
+            h.draw_into(
+                canvas,
+                l.bytes()
+                    .next()
+                    .expect("label should be at least one letter long"),
+            )?
+        }
+        Ok(())
+    }
+
     fn reset_canvas_range(&self, canvas: &mut Canvas) -> Result<(), CanvasError> {
         let mut points = self.dataset.values().flatten();
         let first = points.next().ok_or(CanvasError::NoData)?;
-        let (x_min, x_max, y_min, y_max) = points.into_iter().fold(
+        let (x_min, x_max, y_min, y_max) = points.fold(
             (first.0, first.0, first.1, first.1),
             |(x0, x1, y0, y1), p| (x0.min(p.0), x1.max(p.0), y0.min(p.1), y1.max(p.1)),
         );
@@ -577,7 +630,7 @@ fn get_value(x: &[f64], idx: f64) -> Option<f64> {
     }
     let f = idx.fract();
     let i = idx.floor() as usize;
-    return Some((1.0 - f) * x[i] + f * (x[i + 1]));
+    Some((1.0 - f) * x[i] + f * (x[i + 1]))
 }
 
 #[cfg(test)]
@@ -628,7 +681,6 @@ mod tests {
     "#
         .trim();
         let dataset = DataSet::from_csv(text).unwrap();
-        dbg!(dataset);
     }
 
     #[test]
