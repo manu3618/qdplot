@@ -6,7 +6,8 @@ Plot in terminal tool
 
 1. get some data in a CSV file
 
-```example.csv
+file `example.csv`:
+```
 ,I,L,S
 -5,-5,NaN,0.9589242746631385
 -4,-4,NaN,0.7568024953079282
