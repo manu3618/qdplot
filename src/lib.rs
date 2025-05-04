@@ -1,3 +1,4 @@
+use clap::ValueEnum;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -206,13 +207,31 @@ impl Display for Canvas {
     }
 }
 
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, ValueEnum)]
 pub enum PlotKind {
+    /// Points
     #[default]
     Point,
+
+    /// Boxplot, highliting quantiles and outliers
     Boxplot,
+
+    /// Cumulative distribution function
     CDF,
+
+    /// Histogram
     Histogram,
+}
+
+impl Display for PlotKind {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            PlotKind::Point => write!(f, "point"),
+            PlotKind::Boxplot => write!(f, "boxplot"),
+            PlotKind::CDF => write!(f, "cdf"),
+            PlotKind::Histogram => write!(f, "histogram"),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -681,6 +700,7 @@ mod tests {
     "#
         .trim();
         let dataset = DataSet::from_csv(text).unwrap();
+        assert!(dataset.dataset.len() == 3);
     }
 
     #[test]
