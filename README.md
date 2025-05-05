@@ -1,6 +1,11 @@
+[![Crates.io](https://img.shields.io/crates/v/qdplot.svg)](https://crates.io/crates/qdplot)
+[![Documentation](https://docs.rs/qdplot/badge.svg)](https://docs.rs/qdplot/)
+[![Codecov](https://codecov.io/github/manu3618/qdplot/coverage.svg?branch=master)](https://codecov.io/gh/manu3618/qdplot)
+[![Dependency status](https://deps.rs/repo/github/manu3618/qdplot/status.svg)](https://deps.rs/repo/github/manu3618/qdplot)
+
 # Quick and Dirty Plot tool
 
-Plot in terminal tool
+Plot in terminal tool inspired by [guff](https://github.com/silentbicycle/guff)
 
 ## Quick start
 

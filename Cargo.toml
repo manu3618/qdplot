@@ -2,6 +2,10 @@
 name = "qdplot"
 version = "0.1.0"
 edition = "2024"
+description = "Tool to perform quick plots"
+repository = "https://github.com/manu3618/qdplot"
+license = "MIT"
+readme = "README.md"
 
 [dependencies]
 clap = { version = "4.5.37", features = ["derive"] }
